@@ -1,4 +1,4 @@
-use actix_web::{get, web::Data, App, HttpResponse, HttpServer, Responder, Result};
+use actix_web::{get, post, web::Data, App, HttpResponse, HttpServer, Responder, Result};
 use futures::TryStreamExt;
 use sqlx::{postgres::PgPoolOptions, Postgres, Row};
 
@@ -37,6 +37,19 @@ async fn get_from_db(pool: Data<sqlx::Pool<Postgres>>) -> Result<impl Responder>
     return Ok(HttpResponse::Ok().body(res));
 }
 
+#[post("/write-to-db")]
+async fn write_to_db(pool: Data<sqlx::Pool<Postgres>>) -> Result<impl Responder> {
+    let mut conn = pool.acquire().await.unwrap();
+    let mut rows = sqlx::query("INSERT INTO data VALUES (777)").fetch(&mut conn);
+
+    while let Some(row) = rows.try_next().await.unwrap() {
+        let id: i32 = row.get(0);
+        println!("id: {}", id);
+    }
+
+    return Ok(HttpResponse::Ok().body("OK"));
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let pool = PgPoolOptions::new()
@@ -50,6 +63,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(Data::new(pool.clone()))
             .service(get_from_db)
+            .service(write_to_db)
             .service(get_from_api)
             .service(math_test)
             .service(hello)
