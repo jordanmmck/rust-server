@@ -16,6 +16,15 @@ async fn math_test() -> impl Responder {
     HttpResponse::Ok().body(math_res)
 }
 
+#[get("/simple-math")]
+async fn simple_math() -> impl Responder {
+    let a = 999;
+    let b = 888;
+    let c = 777;
+    let res = a * b / c;
+    HttpResponse::Ok().body(res.to_string())
+}
+
 #[get("/get-from-api")]
 async fn get_from_api() -> impl Responder {
     let fact = call_api::get_cat_fact().await.unwrap();
@@ -66,6 +75,7 @@ async fn main() -> std::io::Result<()> {
             .service(write_to_db)
             .service(get_from_api)
             .service(math_test)
+            .service(simple_math)
             .service(hello)
     })
     .bind(("127.0.0.1", 8080))?
