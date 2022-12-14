@@ -1,9 +1,8 @@
-use actix_web::{get, App, HttpResponse, HttpServer, Responder, Result};
-// use postgres::{Client, NoTls};
-use tokio_postgres::{Error, NoTls};
+use actix_web::{get, web::Data, App, HttpResponse, HttpServer, Responder, Result};
+use futures::TryStreamExt;
+use sqlx::{postgres::PgPoolOptions, Postgres, Row};
 
 mod call_api;
-// mod get_from_db;
 mod math_func;
 
 #[get("/")]
@@ -12,73 +11,48 @@ async fn hello() -> impl Responder {
 }
 
 #[get("/math-test")]
-async fn math() -> impl Responder {
+async fn math_test() -> impl Responder {
     let math_res = math_func::run();
-    println!("{:?}", math_res);
-    HttpResponse::Ok().body("Hello world!")
+    HttpResponse::Ok().body(math_res)
 }
 
 #[get("/get-from-api")]
-async fn fetch() -> impl Responder {
+async fn get_from_api() -> impl Responder {
     let fact = call_api::get_cat_fact().await.unwrap();
     HttpResponse::Ok().body(fact)
 }
 
-#[tokio::main]
 #[get("/get-from-db")]
-async fn get_int() -> Result<impl Responder> {
-    // Connect to the database.
-    let (client, connection) = tokio_postgres::connect("host=localhost user=jordan", NoTls)
-        .await
-        .unwrap();
+async fn get_from_db(pool: Data<sqlx::Pool<Postgres>>) -> Result<impl Responder> {
+    let mut conn = pool.acquire().await.unwrap();
+    let mut rows = sqlx::query("SELECT * FROM data").fetch(&mut conn);
 
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
+    let mut res = String::new();
 
-    let rows = client
-        .query("SELECT * FROM data", &[&"hello world"])
-        .await
-        .unwrap();
+    while let Some(row) = rows.try_next().await.unwrap() {
+        let id: i32 = row.get(0);
+        res = id.to_string();
+    }
 
-    // And then check that we got back the same string we sent over.
-    // let value: &str = rows[0].get(0);
-    // assert_eq!(value, "hello world");
-
-    Ok(HttpResponse::Ok().body(""))
+    return Ok(HttpResponse::Ok().body(res));
 }
-
-// #[get("/get-from-db")]
-// async fn get_int() -> Result<impl Responder> {
-//     let mut client =
-//         Client::connect("postgres://postgres:postgres@localhost:5432/jordan", NoTls).unwrap();
-
-//     let result = client.query("SELECT * FROM data", &[]);
-//     match result {
-//         Ok(rows) => {
-//             for row in rows {
-//                 let id: i32 = row.get(0);
-//                 println!("data: {}", id);
-//             }
-//         }
-//         Err(_) => {
-//             return Err(actix_web::error::ErrorInternalServerError("rip"));
-//         }
-//     }
-
-//     return Ok(HttpResponse::Ok().body(""));
-// }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect("postgres://postgres:postgres@localhost:5432/jordan")
+        .await
+        .unwrap();
+
+    println!("server running on port 8080...");
+    HttpServer::new(move || {
         App::new()
+            .app_data(Data::new(pool.clone()))
+            .service(get_from_db)
+            .service(get_from_api)
+            .service(math_test)
             .service(hello)
-            .service(math)
-            .service(fetch)
-            .service(get_int)
     })
     .bind(("127.0.0.1", 8080))?
     .run()

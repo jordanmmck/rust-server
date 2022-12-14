@@ -1,4 +1,4 @@
-pub fn run() -> f64 {
+pub fn run() -> String {
     let base: i64 = 10;
     let limit = base.pow(9);
 
@@ -11,6 +11,5 @@ pub fn run() -> f64 {
         numerator += 1.0;
         denominator += 1.0;
     }
-    // for loop from 0 to 99
-    return res;
+    return res.to_string();
 }
